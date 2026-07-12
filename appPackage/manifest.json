@@ -1,0 +1,41 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "<BOT_ID>", // Bot Resource Client ID from Azure Portal 
+  "developer": {
+    "name": "Pixel Hackathon",
+    "websiteUrl": "https://example.com",
+    "privacyUrl": "https://example.com/privacy",
+    "termsOfUseUrl": "https://example.com/terms"
+  },
+  "name": {
+    "short": "Pixel",
+    "full": "Pixel IT Helpdesk"
+  },
+  "description": {
+    "short": "IT ticket control from Teams chat",
+    "full": "Pixel lets agents manage ServiceNow incidents directly from incident Teams chats and helps troubloeshoot IT issues."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#5B5FC7",
+  "bots": [
+    {
+      "botId": "<BOT_ID>", // Bot Resource Client ID from Azure Portal
+      "scopes": [
+        "groupChat",
+        "personal"
+      ],
+      "supportsFiles": false,
+      "isNotificationOnly": false
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": []
+}

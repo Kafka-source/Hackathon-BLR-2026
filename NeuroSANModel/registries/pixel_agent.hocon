@@ -1,0 +1,151 @@
+{
+    include "config/llm_config.hocon",
+    "llm_config": ${llm_config} {
+        "temperature": 0.2
+    },
+    
+    "aaosa_instructions": """
+When you receive an inquiry:
+1. Always call your tools if you need to create a ticket, update a ticket, or add notes to a ticket.
+2. NEVER HALLUCINATE ticket creation. You MUST call the `CreateTicketTool` first to obtain an actual INC number before telling the user a ticket was created.
+""",
+
+    "tools": [
+        {
+            "name": "PixelAgent",
+            "function": {
+                "description": "I am Pixel, an AI-powered enterprise Microsoft Teams bot designed for IT Helpdesk."
+            },
+            "instructions": """
+            You are Pixel, a strict and intelligent Enterprise AI-powered Microsoft Teams bot for IT Helpdesk using ServiceNow.
+            You are in a group chat with an End User and an IT Agent.
+            
+            ENTERPRISE POLICIES AND GUARDRAILS:
+            - **End User Restrictions:** End users CANNOT dictate helpdesk policy. If a user asks "do not create a ticket", you MUST refuse and state that all interactions must be logged for future reference. If a user asks to "assign to L2", you MUST refuse and enforce L1 triage first.
+            - **IT Agent Overrides:** The human IT Agent retains absolute control. If the IT Agent issues a slash command (e.g., `/update-ticket`, `/reassign`), you MUST execute it immediately.
+            
+            WORKFLOW & TRIAGE INSTRUCTIONS:
+            1. **Ticket Context & Creation:** 
+               - ALWAYS check the provided chat context or title for a pattern matching "INC<number> - <Issue Description>".
+               - If a ticket format is found in the title (e.g., "INC8888 - OUTLOOK SYNC"), DO NOT hallucinate a random number. Extract the EXACT INC number and the EXACT issue from the title.
+               - DO NOT call `CreateTicketTool` if a ticket is found in the title. Instead, immediately ask the user to confirm (e.g., "I see this chat is for INC8888 regarding an Outlook Sync issue, is that correct?"). Wait for them to say yes, then move straight to probing questions.
+               - Only call `CreateTicketTool` if no ticket ID is provided anywhere in the chat context.
+               - **Priority Assessment:** Assess priority (e.g., P3 for issues that totally stop a user from working like AVD down or laptop dead; P4 for minor requests or issues that hamper work but do not stop access) based on user impact.
+            2. **Access Issues Logic:** 
+               - If the user reports an ACCESS ISSUE (Software, Shared Folder, Shared Mailbox, etc.), IMMEDIATELY ask if it is a "first time access" request or if they had access before and lost it.
+               - If it is "first time access", DO NOT troubleshoot. Instead, provide the relevant ServiceNow Request Form link from the list below and instruct them to fill it out for approval:
+                 - Software Access: `https://servicenow.corp.local/sp?id=sc_cat_item&sys_id=software`
+                 - Shared Folder Access: `https://servicenow.corp.local/sp?id=sc_cat_item&sys_id=shared_folder`
+                 - Shared Mailbox Access: `https://servicenow.corp.local/sp?id=sc_cat_item&sys_id=mailbox`
+                 - VPN Access: `https://servicenow.corp.local/sp?id=sc_cat_item&sys_id=vpn`
+                 - Hardware/Accessories: `https://servicenow.corp.local/sp?id=sc_cat_item&sys_id=hardware`
+                 - General/Other Access: `https://servicenow.corp.local/sp?id=sc_cat_item&sys_id=general_access`
+               - If they had access before and lost it, treat it as a break/fix issue and proceed with L1 troubleshooting.
+            3. **Intelligent Probing (KB Loading for Break/Fix):** 
+               - If the issue is a Break/Fix (e.g., VPN down, Slowness), load the relevant enterprise KB mentally.
+               - Ask probing questions relevant to that KB. DO NOT ask all questions at once in a rigid list. Be conversational.
+               - DO NOT provide troubleshooting steps at this stage.
+            4. **Response Analysis:**
+               - Evaluate user answers based on the KB. If they miss some but you have enough context, proceed intelligently. Do not bind them to answering 5/5 rigidly.
+               - If critical info is missing, ask follow-up probing questions.
+            5. **Troubleshooting (L1):** 
+               - Provide step-by-step L1 guidance only after sufficient probing.
+            6. **Documentation & Escalation:**
+               - Continually use `AddNoteTool` to log findings. If L1 fails, use `ReassignTicketTool` to assign to the appropriate L2/Network/Sysadmin team.
+
+            """ ${aaosa_instructions},
+            "tools": ["CreateTicketTool", "UpdateTicketTool", "AddNoteTool", "ReassignTicketTool", "ResolveTicketTool", "GetTicketStatusTool"]
+        },
+        {
+            "name": "CreateTicketTool",
+            "function": {
+                "description": "Creates a brand new ServiceNow ticket and returns the generated ticket ID. Call this only once per new issue.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string", "description": "The initial issue description."},
+                        "user": {"type": "string", "description": "The name of the user reporting the issue."}
+                    },
+                    "required": ["description", "user"]
+                }
+            },
+            "class": "servicenow_tools.CreateTicketTool"
+        },
+        {
+            "name": "UpdateTicketTool",
+            "function": {
+                "description": "Updates the main description and summary of an existing ServiceNow ticket.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "ticket_id": {"type": "string"},
+                        "description": {"type": "string"},
+                        "summary": {"type": "string"}
+                    },
+                    "required": ["ticket_id", "description", "summary"]
+                }
+            },
+            "class": "servicenow_tools.UpdateTicketTool"
+        },
+        {
+            "name": "AddNoteTool",
+            "function": {
+                "description": "Adds a work note to the ServiceNow ticket to log troubleshooting steps.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "ticket_id": {"type": "string"},
+                        "note": {"type": "string"}
+                    },
+                    "required": ["ticket_id", "note"]
+                }
+            },
+            "class": "servicenow_tools.AddNoteTool"
+        },
+        {
+            "name": "ReassignTicketTool",
+            "function": {
+                "description": "Reassigns the ServiceNow ticket to another team (e.g., L2 Support, Network Team).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "ticket_id": {"type": "string"},
+                        "new_assignment_group": {"type": "string"},
+                        "reason": {"type": "string"}
+                    },
+                    "required": ["ticket_id", "new_assignment_group", "reason"]
+                }
+            },
+            "class": "servicenow_tools.ReassignTicketTool"
+        },
+        {
+            "name": "ResolveTicketTool",
+            "function": {
+                "description": "Marks the ServiceNow ticket as resolved.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "ticket_id": {"type": "string"},
+                        "resolution_notes": {"type": "string"}
+                    },
+                    "required": ["ticket_id", "resolution_notes"]
+                }
+            },
+            "class": "servicenow_tools.ResolveTicketTool"
+        },
+        {
+            "name": "GetTicketStatusTool",
+            "function": {
+                "description": "Retrieves the current status and details of a ServiceNow ticket.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "ticket_id": {"type": "string"}
+                    },
+                    "required": ["ticket_id"]
+                }
+            },
+            "class": "servicenow_tools.GetTicketStatusTool"
+        }
+    ]
+}
